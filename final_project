@@ -1,0 +1,204 @@
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.cluster import KMeans
+from scipy.cluster.hierarchy import dendrogram, linkage
+import matplotlib.pyplot as plt
+
+# خواندن دیتاست
+file_path = '/modified_diabetes_prediction_dataset(5).csv'  # مسیر فایل خود را تنظیم کنید
+df = pd.read_csv(file_path)
+
+
+# نمایش اطلاعات اولیه
+print("قبل از پاکسازی:")
+print(df.info())
+print(f"تعداد سطرها و ستون‌ها: {df.shape}")
+
+# حذف سطرهایی که مقادیر گمشده دارند
+df_cleaned = df.dropna()
+
+# حذف داده‌های تکراری
+df_cleaned = df_cleaned.drop_duplicates()
+
+# اصلاح ناسازگاری در مقادیر متنی
+def normalize_text(value):
+    if isinstance(value, str):
+        return value.strip().capitalize()  # حذف فاصله اضافی و بزرگ کردن حرف اول
+    return value
+
+df_cleaned['gender'] = df_cleaned['gender'].apply(normalize_text)
+df_cleaned['smoking_history'] = df_cleaned['smoking_history'].apply(normalize_text)
+
+# رفع خطاهای منطقی
+if 'age' in df_cleaned.columns:  # اصلاح سن منفی
+    df_cleaned['age'] = df_cleaned['age'].abs()
+
+if 'blood_glucose_level' in df_cleaned.columns:  # شناسایی و اصلاح سطح قند خون غیرطبیعی
+    df_cleaned['blood_glucose_level'] = df_cleaned['blood_glucose_level'].apply(
+        lambda x: x if 0 <= x <= 300 else None
+    )
+
+# حذف مقادیر خارج از محدوده (Outliers) با استفاده از روش IQR
+def remove_outliers(col):
+    if col.dtypes in ['int64', 'float64']:  # فقط برای ستون‌های عددی اعمال شود
+        Q1 = col.quantile(0.25)
+        Q3 = col.quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        return col.apply(lambda x: x if lower_bound <= x <= upper_bound else None)
+    return col
+
+df_cleaned = df_cleaned.apply(remove_outliers, axis=0)
+
+# حذف سطرهایی که پس از حذف Outliers مقدار گمشده پیدا کردند
+df_cleaned = df_cleaned.dropna()
+
+# نمایش اطلاعات پس از پاکسازی
+print("\nبعد از پاکسازی:")
+print(df_cleaned.info())
+print(f"تعداد سطرها و ستون‌ها: {df_cleaned.shape}")
+
+# ذخیره دیتاست پاکسازی‌شده در فایل جدید
+output_path = '/cleannn.csv'
+df_cleaned.to_csv(output_path, index=False)
+print(f"\nدیتاست پاکسازی شده ذخیره شد: {output_path}")
+
+# خواندن دیتاست پاکسازی شده
+file_path = '/cleannn.csv'  # مسیر فایل پاکسازی‌شده خود را وارد کنید
+df = pd.read_csv(file_path)
+
+# انتخاب ستون‌های عددی برای نرمال‌سازی
+numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
+
+# انتخاب مقیاس‌گر: StandardScaler یا MinMaxScaler
+scaler = StandardScaler()  # برای Standardization
+# scaler = MinMaxScaler()  # برای Min-Max Scaling
+
+# اعمال نرمال‌سازی
+df_scaled = df.copy()
+df_scaled[numeric_columns] = scaler.fit_transform(df[numeric_columns])
+
+# نمایش اطلاعات دیتاست پس از نرمال‌سازی
+print("\nدیتاست پس از نرمال‌سازی:")
+print(df_scaled.head())
+
+# ذخیره دیتاست نرمال‌سازی شده در فایل جدید
+output_path = '/new_normal.csv'
+df_scaled.to_csv(output_path, index=False)
+print(f"\nدیتاست نرمال‌سازی شده ذخیره شد: {output_path}")
+# خواندن دیتاست نرمال‌سازی شده
+file_path = '/cleannn.csv'  # مسیر فایل نرمال‌سازی‌شده خود را وارد کنید
+df = pd.read_csv(file_path)
+
+# فرض بر این است که داده‌های شما در یک DataFrame هستند
+encoder = LabelEncoder()
+for column in df.columns:
+    if df[column].dtype == 'object':  # بررسی اینکه نوع داده ستون رشته باشد
+        df[column] = encoder.fit_transform(df[column])
+
+
+# انتخاب ویژگی‌ها و برچسب‌ها
+X = df.drop(columns=['diabetes'])  # ویژگی‌ها
+y = df['diabetes']  # برچسب (هدف)
+
+# تقسیم‌بندی داده‌ها به آموزش و تست (70% آموزش، 30% تست)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# مدل درخت تصمیم (Decision Tree)
+dt_model = DecisionTreeClassifier(random_state=42)
+dt_model.fit(X_train, y_train)
+
+# پیش‌بینی با استفاده از مدل درخت تصمیم
+y_pred_dt = dt_model.predict(X_test)
+
+# ارزیابی مدل درخت تصمیم
+dt_accuracy = accuracy_score(y_test, y_pred_dt)
+print(f"دقت مدل درخت تصمیم: {dt_accuracy * 100:.2f}%")
+
+# مدل SVM
+svm_model = SVC(random_state=42)
+
+if len(set(y_train))< 2:
+  y_train=np.append(y_train,[1])
+  X_train=np.append(X_train,np.zeros((1, X_train.shape[1])), axis=0)
+
+svm_model.fit(X_train, y_train)
+
+# پیش‌بینی با استفاده از مدل SVM
+y_pred_svm = svm_model.predict(X_test)
+
+# ارزیابی مدل SVM
+svm_accuracy = accuracy_score(y_test, y_pred_svm)
+print(f"دقت مدل SVM: {svm_accuracy * 100:.2f}%")
+
+
+# ارزیابی مدل درخت تصمیم
+dt_accuracy = accuracy_score(y_test, y_pred_dt)
+dt_precision = precision_score(y_test, y_pred_dt)
+dt_recall = recall_score(y_test, y_pred_dt)
+dt_f1 = f1_score(y_test, y_pred_dt)
+dt_confusion = confusion_matrix(y_test, y_pred_dt)
+
+print("**مدل درخت تصمیم**")
+print(f"دقت (Accuracy): {dt_accuracy * 100:.2f}%")
+print(f"دقت مثبت (Precision): {dt_precision:.2f}")
+print(f"بازخوانی (Recall): {dt_recall:.2f}")
+print(f"امتیاز F1: {dt_f1:.2f}")
+print(f"ماتریس درهم‌ریختگی:\n{dt_confusion}")
+
+# ارزیابی مدل SVM
+svm_accuracy = accuracy_score(y_test, y_pred_svm)
+svm_precision = precision_score(y_test, y_pred_svm)
+svm_recall = recall_score(y_test, y_pred_svm)
+svm_f1 = f1_score(y_test, y_pred_svm)
+svm_confusion = confusion_matrix(y_test, y_pred_svm)
+
+print("\n**مدل SVM**")
+print(f"دقت (Accuracy): {svm_accuracy * 100:.2f}%")
+print(f"دقت مثبت (Precision): {svm_precision:.2f}")
+print(f"بازخوانی (Recall): {svm_recall:.2f}")
+print(f"امتیاز F1: {svm_f1:.2f}")
+print(f"ماتریس درهم‌ریختگی:\n{svm_confusion}")
+
+
+# خواندن داده‌ها
+file_path = '/new_normal.csv'  # مسیر فایل خود را وارد کنید
+df = pd.read_csv(file_path)
+
+# انتخاب یک ویژگی مناسب برای خوشه‌بندی
+feature = 'age'  # ستون انتخابی شما (برای مثال: سن)
+data = df[[feature]].dropna()  # حذف داده‌های گمشده
+
+# خوشه‌بندی با K-Means
+kmeans = KMeans(n_clusters=3, random_state=42)  # تعداد خوشه‌ها (مثلاً 3 خوشه)
+kmeans_labels = kmeans.fit_predict(data)
+
+# اضافه کردن برچسب‌های خوشه‌ها به داده‌ها
+df['kmeans_cluster'] = kmeans_labels
+
+# ترسیم نتایج K-Means
+plt.figure(figsize=(8, 6))
+plt.scatter(data[feature], np.zeros_like(data[feature]), c=kmeans_labels, cmap='viridis')
+plt.title("خوشه‌بندی K-Means")
+plt.xlabel("Feature: " + feature)
+plt.ylabel("Value")
+plt.show()
+
+# خوشه‌بندی سلسله‌مراتبی
+linked = linkage(data, method='ward')  # روش ward برای کاهش واریانس داخل خوشه
+
+# ترسیم دندوگرام
+plt.figure(figsize=(10, 7))
+dendrogram(linked, orientation='top', distance_sort='descending', show_leaf_counts=True)
+plt.title("دندوگرام خوشه‌بندی سلسله‌مراتبی")
+plt.xlabel("Samples")
+plt.ylabel("Distance")
+plt.show()
